@@ -1,0 +1,365 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Batch Analysis | NIDS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+    <nav class="navbar">
+        <a class="brand" href="/">
+            <span class="brand-icon">N</span>
+            <span>NIDS<small>Network Intrusion Detection System</small></span>
+        </a>
+
+        <div class="nav-links">
+            <a class="nav-link" href="/">Overview</a>
+            <a class="nav-link" href="/single">Traffic Detection</a>
+            <a class="nav-link active" href="/batch">CSV Analysis</a>
+        </div>
+    </nav>
+</header>
+
+<main>
+    <section class="page-heading">
+        <div class="eyebrow">BATCH NETWORK ANALYSIS</div>
+        <h1>CSV Batch Analysis</h1>
+        <p>
+            Upload a network traffic CSV file to classify multiple records
+            using the trained Decision Tree model.
+        </p>
+    </section>
+
+    <section class="notice">
+        <strong>Prepare your CSV file</strong>
+        <p>
+            For full-feature predictions, provide all 41 NSL-KDD feature
+            columns in the expected order. The API also supports the
+            documented NSL-KDD dataset formats, including supported
+            files with labels and difficulty columns.
+        </p>
+        <p>
+            Upload limit: 10 MB. Maximum records per request: 5,000.
+            Only upload files you are authorized to analyze.
+        </p>
+    </section>
+
+    <section class="form-panel">
+        <h2>Upload Network Traffic Data</h2>
+        <p class="form-description">
+            Select a CSV file, then run batch prediction.
+        </p>
+
+        <form id="batch-form">
+            <div class="upload-box">
+                <div class="form-group">
+                    <label for="csv-file">Choose CSV File</label>
+                    <input
+                        id="csv-file"
+                        name="file"
+                        type="file"
+                        accept=".csv,text/csv"
+                        required
+                    >
+                    <span class="field-help">
+                        Select a properly formatted CSV file.
+                    </span>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button type="submit" id="analyze-button">
+                    Analyze CSV
+                </button>
+                <button type="button" class="btn-secondary" id="clear-button">
+                    Clear Results
+                </button>
+            </div>
+        </form>
+
+        <div id="batch-message" class="notice hidden" role="status"
+             aria-live="polite"></div>
+    </section>
+
+    <section id="results-section" class="hidden">
+        <div class="section-heading">
+            <h2>Analysis Summary</h2>
+            <p>Overview of the model's predictions for the uploaded records.</p>
+        </div>
+
+        <div class="results-summary">
+            <div class="summary-item">
+                <span class="label">Total Records</span>
+                <span class="number" id="total-count">0</span>
+            </div>
+
+            <div class="summary-item">
+                <span class="label">Normal Records</span>
+                <span class="number" id="normal-count">0</span>
+            </div>
+
+            <div class="summary-item">
+                <span class="label">Attack Records</span>
+                <span class="number" id="attack-count">0</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Prediction Results</h2>
+            <p class="form-description">
+                The table displays up to the first 100 predictions.
+                Download the CSV to save all returned predictions.
+            </p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Record</th>
+                            <th>Prediction</th>
+                            <th>Classification</th>
+                            <th>Estimated Family</th>
+                            <th>Decision Explanation</th>
+                            <th>Recommended Investigation</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body">
+                        <tr>
+                            <td colspan="6">No results yet.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p id="table-note" class="field-help"></p>
+            <p class="field-help">
+                Decision explanations reflect the binary Decision Tree path.
+                Attack families are estimates; the family model has low recall for R2L and U2R.
+            </p>
+
+            <div class="button-row">
+                <button type="button" id="download-button">
+                    Download Predictions CSV
+                </button>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <p>Network Intrusion Detection System · CSV Batch Analysis</p>
+</footer>
+
+<script>
+const batchForm = document.getElementById("batch-form");
+const fileInput = document.getElementById("csv-file");
+const analyzeButton = document.getElementById("analyze-button");
+const messageBox = document.getElementById("batch-message");
+const resultsSection = document.getElementById("results-section");
+const resultsBody = document.getElementById("results-body");
+const tableNote = document.getElementById("table-note");
+
+let allPredictions = [];
+
+function showMessage(message, isError = false) {
+    messageBox.textContent = message;
+    messageBox.classList.remove("hidden");
+    messageBox.style.borderLeftColor = isError ? "#ff7373" : "#27a866";
+}
+
+function hideMessage() {
+    messageBox.textContent = "";
+    messageBox.classList.add("hidden");
+}
+
+function normalizeLabel(item) {
+    const value = String(item.label ?? item.prediction ?? "");
+    return value.toLowerCase() === "1" ||
+           value.toLowerCase() === "attack"
+           ? "Attack"
+           : "Normal";
+}
+
+function renderResults(predictions) {
+    resultsBody.replaceChildren();
+
+    if (!predictions.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 6;
+        cell.textContent = "The API returned no prediction records.";
+        row.appendChild(cell);
+        resultsBody.appendChild(row);
+        return;
+    }
+
+    predictions.slice(0, 100).forEach((item, index) => {
+        const row = document.createElement("tr");
+        const rowCell = document.createElement("td");
+        const predictionCell = document.createElement("td");
+        const labelCell = document.createElement("td");
+        const familyCell = document.createElement("td");
+        const explanationCell = document.createElement("td");
+        const recommendationsCell = document.createElement("td");
+        const badge = document.createElement("span");
+
+        rowCell.textContent = item.row ?? (index + 1);
+        predictionCell.textContent = String(item.prediction ?? "");
+        const label = normalizeLabel(item);
+
+        badge.className = label === "Attack" ? "label-attack" : "label-normal";
+        badge.textContent = label;
+        labelCell.appendChild(badge);
+
+        familyCell.textContent = item.attack_family || "Not available";
+        explanationCell.textContent = Array.isArray(item.explanation)
+            ? item.explanation.join("; ")
+            : "No explanation returned";
+        recommendationsCell.textContent = Array.isArray(item.recommendations)
+            ? item.recommendations.join(" ")
+            : "Review relevant network and host logs.";
+
+        row.append(
+            rowCell, predictionCell, labelCell,
+            familyCell, explanationCell, recommendationsCell
+        );
+        resultsBody.appendChild(row);
+    });
+
+    tableNote.textContent = predictions.length > 100
+        ? "Showing 100 of " + predictions.length +
+          " records. Download the CSV for all predictions."
+        : "Showing all " + predictions.length + " returned records. Attack-family labels are estimates.";
+}
+
+batchForm.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    hideMessage();
+
+    const file = fileInput.files[0];
+
+    if (!file) {
+        showMessage("Please choose a CSV file first.", true);
+        return;
+    }
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+        showMessage("Please select a file with the .csv extension.", true);
+        return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+        showMessage("The file exceeds the 10 MB upload limit.", true);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    analyzeButton.disabled = true;
+    analyzeButton.textContent = "Analyzing...";
+    resultsSection.classList.add("hidden");
+
+    try {
+        const response = await fetch("/api/predict-csv", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+            throw new Error(data.error || "CSV prediction failed.");
+        }
+
+        allPredictions = Array.isArray(data.predictions)
+            ? data.predictions
+            : [];
+
+        document.getElementById("total-count").textContent =
+            data.total_records ?? allPredictions.length;
+
+        document.getElementById("normal-count").textContent =
+            data.normal_count ?? allPredictions.filter(
+                item => normalizeLabel(item) === "Normal"
+            ).length;
+
+        document.getElementById("attack-count").textContent =
+            data.attack_count ?? allPredictions.filter(
+                item => normalizeLabel(item) === "Attack"
+            ).length;
+
+        renderResults(allPredictions);
+        resultsSection.classList.remove("hidden");
+
+        showMessage(
+            "Analysis completed successfully for " +
+            (data.total_records ?? allPredictions.length) +
+            " records. Attack-family labels are estimates, not confirmed incidents."
+        );
+    } catch (error) {
+        showMessage("CSV analysis failed: " + error.message, true);
+    } finally {
+        analyzeButton.disabled = false;
+        analyzeButton.textContent = "Analyze CSV";
+    }
+});
+
+document.getElementById("download-button").addEventListener("click", function () {
+    if (!allPredictions.length) {
+        showMessage("There are no predictions to download.", true);
+        return;
+    }
+
+    const rows = [
+        ["row", "prediction", "label", "attack_family", "decision_explanation", "recommended_investigation"],
+        ...allPredictions.map((item, index) => [
+            item.row ?? (index + 1),
+            item.prediction ?? "",
+            normalizeLabel(item),
+            item.attack_family ?? "",
+            Array.isArray(item.explanation) ? item.explanation.join("; ") : "",
+            Array.isArray(item.recommendations) ? item.recommendations.join("; ") : ""
+        ])
+    ];
+
+    const csvContent = rows.map(row =>
+        row.map(value => {
+            const text = String(value);
+            return '"' + text.replace(/"/g, '""') + '"';
+        }).join(",")
+    ).join("\r\n");
+
+    const blob = new Blob(["\uFEFF" + csvContent], {
+        type: "text/csv;charset=utf-8;"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "nids_predictions.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+});
+
+document.getElementById("clear-button").addEventListener("click", function () {
+    allPredictions = [];
+    batchForm.reset();
+    hideMessage();
+    resultsSection.classList.add("hidden");
+    resultsBody.replaceChildren();
+    tableNote.textContent = "";
+    document.getElementById("total-count").textContent = "0";
+    document.getElementById("normal-count").textContent = "0";
+    document.getElementById("attack-count").textContent = "0";
+});
+</script>
+
+</body>
+</html>

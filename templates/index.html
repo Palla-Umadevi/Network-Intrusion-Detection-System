@@ -1,0 +1,153 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIDS | Network Intrusion Detection System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+    <nav class="navbar">
+        <a class="brand" href="/">
+            <span class="brand-icon">N</span>
+            <span>
+                NIDS
+                <small>Network Intrusion Detection System</small>
+            </span>
+        </a>
+
+        <div class="nav-links">
+            <a class="nav-link active" href="/">Overview</a>
+            <a class="nav-link" href="/single">Traffic Detection</a>
+            <a class="nav-link" href="/batch">CSV Analysis</a>
+        </div>
+    </nav>
+</header>
+
+<main>
+    <section class="page-heading">
+        <div class="eyebrow">NETWORK SECURITY · MACHINE LEARNING</div>
+        <h1>Network Intrusion Detection System</h1>
+        <p>
+            Identify potentially malicious network connections using a
+            traditional machine learning model trained on network traffic data.
+            Review individual connections or analyze a batch of records.
+        </p>
+    </section>
+
+ 
+         
+
+    <section>
+        <div class="section-heading">
+            <h2>Choose an Analysis Method</h2>
+            <p>Select the method that matches the network data you want to inspect.</p>
+        </div>
+
+        <div class="grid-2">
+            <article class="card">
+                <div class="card-top">
+                    <span class="card-icon">⌕</span>
+                    <div>
+                        <h2>Single Traffic Detection</h2>
+                    </div>
+                </div>
+
+                <p>
+                    Enter eight selected network traffic fields to get a
+                    quick Normal or Attack prediction.
+                </p>
+
+                <p>
+                    <strong>Best for:</strong> demonstrations and individual
+                    connection checks.
+                </p>
+
+                <div class="button-row">
+                    <a class="btn" href="/single">Open Traffic Detection</a>
+                </div>
+            </article>
+
+            <article class="card">
+                <div class="card-top">
+                    <span class="card-icon">▤</span>
+                    <div>
+                        <h2>CSV Batch Analysis</h2>
+                    </div>
+                </div>
+
+                <p>
+                    Upload a CSV containing network records and review
+                    predictions for multiple connections in one operation.
+                </p>
+
+                <p>
+                    <strong>Best for:</strong> complete-feature analysis
+                    using the supported NSL-KDD CSV format.
+                </p>
+
+                <div class="button-row">
+                    <a class="btn" href="/batch">Open CSV Analysis</a>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="notice">
+        <strong>Model information</strong>
+        <p>
+            This project uses a Decision Tree classifier and traditional
+            machine learning. Its predictions are model estimates, not
+            a guarantee that network traffic is safe or malicious.
+        </p>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <p>Network Intrusion Detection System · Flask · Traditional Machine Learning</p>
+</footer>
+
+<script>
+async function loadServiceStatus() {
+    const statusElement = document.getElementById("service-status");
+    const detailsElement = document.getElementById("service-details");
+
+    try {
+        const response = await fetch("/api/status");
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Service status unavailable");
+        }
+
+        const running = data.status === "running" || data.running === true;
+
+        statusElement.className = running
+            ? "status-pill"
+            : "status-pill status-error";
+
+        statusElement.innerHTML = running
+            ? '<span class="status-dot"></span> Service Online'
+            : '<span class="status-dot"></span> Service Unavailable';
+
+        detailsElement.textContent = running
+            ? "Model: " + (data.model || "Decision Tree") +
+              " · Expected features: " + (data.expected_features || 41)
+            : "The prediction service is not reporting a running status.";
+    } catch (error) {
+        statusElement.className = "status-pill status-error";
+        statusElement.innerHTML =
+            '<span class="status-dot"></span> Connection Failed';
+        detailsElement.textContent =
+            "Could not reach /api/status. Check that the Flask server is running.";
+    }
+}
+
+loadServiceStatus();
+</script>
+
+</body>
+</html>

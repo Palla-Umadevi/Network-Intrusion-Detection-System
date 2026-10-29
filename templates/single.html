@@ -1,0 +1,339 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Single Traffic Detection | NIDS</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+    <nav class="navbar">
+        <a class="brand" href="/">
+            <span class="brand-icon">N</span>
+            <span>NIDS<small>Network Intrusion Detection System</small></span>
+        </a>
+
+        <div class="nav-links">
+            <a class="nav-link" href="/">Overview</a>
+            <a class="nav-link active" href="/single">Traffic Detection</a>
+            <a class="nav-link" href="/batch">CSV Analysis</a>
+        </div>
+    </nav>
+</header>
+
+<main>
+    <section class="page-heading">
+        <div class="eyebrow">INDIVIDUAL CONNECTION ANALYSIS</div>
+        <h1>Single Traffic Detection</h1>
+        <p>
+            Enter the selected characteristics of one network connection
+            and classify it using the trained Decision Tree model.
+        </p>
+    </section>
+
+    <section class="notice">
+        <strong>Important: Simplified traffic analysis</strong>
+        <p>
+            This page uses only eight selected inputs: Protocol Type, Service,
+            Connection Flag, Duration, Source Bytes, Destination Bytes,
+            Login Status, and Recent Connection Count. The remaining 33
+            NSL-KDD features are assigned default values of zero. Therefore,
+            the result is an approximation and may be less reliable than a
+            prediction using the complete feature set.
+        </p>
+        <p>
+            <strong>Need full-feature analysis?</strong>
+            Use CSV Batch Analysis to upload a supported CSV containing
+            all 41 network features for each record.
+        </p>
+        <div class="button-row">
+            <a class="btn" href="/batch">Go to CSV Batch Analysis</a>
+        </div>
+    </section>
+
+    <section class="form-panel">
+        <h2>Connection Details</h2>
+        <p class="form-description">
+            Complete all eight fields, then run the prediction.
+        </p>
+
+        <form id="traffic-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="protocol_type">Protocol Type</label>
+                    <select id="protocol_type" required>
+                        <option value="">Select protocol</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="service">Service</label>
+                    <select id="service" required>
+                        <option value="">Select service</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="flag">Connection Flag</label>
+                    <select id="flag" required>
+                        <option value="">Select flag</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="duration">Duration</label>
+                    <input id="duration" type="number" min="0" step="any"
+                           value="0" required>
+                    <span class="field-help">Connection duration.</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="src_bytes">Source Bytes</label>
+                    <input id="src_bytes" type="number" min="0" step="any"
+                           value="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="dst_bytes">Destination Bytes</label>
+                    <input id="dst_bytes" type="number" min="0" step="any"
+                           value="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="logged_in">Login Status</label>
+                    <select id="logged_in" required>
+                        <option value="0">Not logged in (0)</option>
+                        <option value="1">Logged in (1)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="count">Recent Connection Count</label>
+                    <input id="count" type="number" min="0" step="any"
+                           value="0" required>
+                    <span class="field-help">
+                        Number of recent connections in the dataset feature.
+                    </span>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button type="submit" id="predict-button">
+                    Analyze Traffic
+                </button>
+                <button type="reset" class="btn-secondary" id="reset-button">
+                    Reset Form
+                </button>
+            </div>
+        </form>
+
+        <div id="form-message" class="notice hidden" role="status"></div>
+
+        <section id="prediction-result" class="result-box hidden"
+                 aria-live="polite">
+            <h2>Prediction Result</h2>
+            <p id="prediction-label"></p>
+            <p id="prediction-details"></p>
+            <h3>Why the model decided this</h3>
+            <ul id="explanation-list"></ul>
+            <p id="explanation-note" class="field-help"></p>
+            <h3>Estimated Attack Family</h3>
+            <p id="attack-family"></p>
+            <p id="family-note" class="field-help"></p>
+            <h3>Recommended Investigation</h3>
+            <ul id="recommendation-list"></ul>
+        </section>
+    </section>
+</main>
+
+<footer class="site-footer">
+    <p>Network Intrusion Detection System · Single Traffic Detection</p>
+</footer>
+
+<script>
+const form = document.getElementById("traffic-form");
+const predictButton = document.getElementById("predict-button");
+const formMessage = document.getElementById("form-message");
+const resultBox = document.getElementById("prediction-result");
+
+const FEATURE_NAMES = [
+    "duration", "protocol_type", "service", "flag", "src_bytes",
+    "dst_bytes", "land", "wrong_fragment", "urgent", "hot",
+    "num_failed_logins", "logged_in", "num_compromised", "root_shell",
+    "su_attempted", "num_root", "num_file_creations", "num_shells",
+    "num_access_files", "num_outbound_cmds", "is_host_login",
+    "is_guest_login", "count", "srv_count", "serror_rate",
+    "srv_serror_rate", "rerror_rate", "srv_rerror_rate", "same_srv_rate",
+    "diff_srv_rate", "srv_diff_host_rate", "dst_host_count",
+    "dst_host_srv_count", "dst_host_same_srv_rate",
+    "dst_host_diff_srv_rate", "dst_host_same_src_port_rate",
+    "dst_host_srv_diff_host_rate", "dst_host_serror_rate",
+    "dst_host_srv_serror_rate", "dst_host_rerror_rate",
+    "dst_host_srv_rerror_rate"
+];
+
+function showMessage(message, isError = false) {
+    formMessage.textContent = message;
+    formMessage.classList.remove("hidden");
+    formMessage.style.borderLeftColor = isError ? "#ff7373" : "#27a866";
+}
+
+function hideMessage() {
+    formMessage.textContent = "";
+    formMessage.classList.add("hidden");
+}
+
+function populateSelect(id, values) {
+    const select = document.getElementById(id);
+    const previousValue = select.value;
+
+    select.replaceChildren(new Option("Select " + (
+        id === "protocol_type" ? "protocol" :
+        id === "service" ? "service" : "flag"
+    ), ""));
+
+    values.forEach(value => {
+        select.add(new Option(value, value));
+    });
+
+    if (values.includes(previousValue)) {
+        select.value = previousValue;
+    }
+}
+
+async function loadOptions() {
+    try {
+        const response = await fetch("/api/options");
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Could not load feature options.");
+        }
+
+        ["protocol_type", "service", "flag"].forEach(key => {
+            if (Array.isArray(data[key])) {
+                populateSelect(key, data[key]);
+            }
+        });
+    } catch (error) {
+        showMessage(
+            "Could not load protocol, service, and flag options. " +
+            "Check the Flask server and /api/options endpoint. " + error.message,
+            true
+        );
+    }
+}
+
+function buildFeatureVector() {
+    const features = new Array(41).fill(0);
+
+    // Indices follow the standard NSL-KDD 41-feature order.
+    features[0] = Number(document.getElementById("duration").value);
+    features[1] = document.getElementById("protocol_type").value;
+    features[2] = document.getElementById("service").value;
+    features[3] = document.getElementById("flag").value;
+    features[4] = Number(document.getElementById("src_bytes").value);
+    features[5] = Number(document.getElementById("dst_bytes").value);
+    features[11] = Number(document.getElementById("logged_in").value);
+    features[22] = Number(document.getElementById("count").value);
+
+    return features;
+}
+
+form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    hideMessage();
+    resultBox.classList.add("hidden");
+
+    if (!form.reportValidity()) {
+        return;
+    }
+
+    const features = buildFeatureVector();
+
+    if (features.length !== 41) {
+        showMessage("Invalid feature count. Expected 41 features.", true);
+        return;
+    }
+
+    predictButton.disabled = true;
+    predictButton.textContent = "Analyzing...";
+
+    try {
+        const response = await fetch("/predict", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ features: features, simplified: true })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+            throw new Error(data.error || "Prediction request failed.");
+        }
+
+        const rawLabel = String(data.label ?? data.prediction ?? "");
+        const isAttack = rawLabel.toLowerCase() === "attack" ||
+                         rawLabel === "1";
+
+        resultBox.classList.remove("hidden", "result-normal", "result-attack");
+        resultBox.classList.add(isAttack ? "result-attack" : "result-normal");
+
+        document.getElementById("prediction-label").textContent =
+            "Classification: " + (isAttack ? "Attack" : "Normal");
+
+        document.getElementById("prediction-details").textContent =
+            "Binary model output: " + String(data.prediction ?? rawLabel);
+
+        const explanationList = document.getElementById("explanation-list");
+        explanationList.replaceChildren();
+        (Array.isArray(data.explanation) ? data.explanation : []).forEach(item => {
+            const li = document.createElement("li");
+            li.textContent = item;
+            explanationList.appendChild(li);
+        });
+
+        document.getElementById("explanation-note").textContent =
+            data.explanation_note || "Decision-path conditions describe model behavior, not proof of an attack.";
+
+        document.getElementById("attack-family").textContent =
+            data.attack_family || "Unavailable";
+
+        document.getElementById("family-note").textContent =
+            data.family_note || "Attack family is an estimate, not a confirmed incident.";
+
+        const recommendationList = document.getElementById("recommendation-list");
+        recommendationList.replaceChildren();
+        (Array.isArray(data.recommendations) ? data.recommendations : []).forEach(item => {
+            const li = document.createElement("li");
+            li.textContent = item;
+            recommendationList.appendChild(li);
+        });
+    } catch (error) {
+        showMessage("Prediction failed: " + error.message, true);
+    } finally {
+        predictButton.disabled = false;
+        predictButton.textContent = "Analyze Traffic";
+    }
+});
+
+document.getElementById("reset-button").addEventListener("click", function () {
+    resultBox.classList.add("hidden");
+    hideMessage();
+    ["explanation-list", "recommendation-list"].forEach(id => {
+        document.getElementById(id).replaceChildren();
+    });
+    ["prediction-label", "prediction-details", "explanation-note",
+     "attack-family", "family-note"].forEach(id => {
+        document.getElementById(id).textContent = "";
+    });
+});
+
+loadOptions();
+</script>
+
+</body>
+</html>

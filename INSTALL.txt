@@ -1,0 +1,26 @@
+NIDS explainability patch
+
+Files in this patch:
+- app.py
+- src/predict.py
+- templates/single.html
+- templates/batch.html
+
+Install:
+1. Back up those four existing files in your local NIDS-FullStack project.
+2. Copy the files from this patch into the matching paths, replacing existing files.
+3. Keep models/decision_tree.joblib and models/attack_family.joblib.
+4. Keep dataset/KDDTrain+.txt because /api/options reads it.
+5. Ensure your current environment has the same dependencies already used by the app.
+6. Run from the project root:
+   python app.py
+7. Test /, /single, /batch, /api/status, and a small CSV upload.
+
+Behavior:
+- The existing Decision Tree remains the primary Normal/Attack classifier.
+- The separate Random Forest family model estimates DOS/PROBE/R2L/U2R only when the primary model says Attack.
+- The explanation shows up to six conditions from the actual Decision Tree path.
+- The recommendations are investigation suggestions, not proof of an incident.
+- Single traffic mode uses only eight user-entered fields; remaining 33 fields are zeros.
+- The family model's independent test recall for R2L and U2R was poor, so treat those family estimates cautiously.
+- For deployment, commit and push the updated files and ensure both model files and KDDTrain+.txt are included in the repository. Then redeploy on Render.
